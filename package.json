@@ -4,10 +4,13 @@
     "mongodb": "^5.3.0",
     "ngrok": "^4.3.3",
     "node-telegram-bot-api": "^0.61.0",
+    "nodemon": "^2.0.22",
+    "ts-node": "^10.9.1",
     "typescript": "^5.0.4"
   },
   "scripts": {
-    "start": "nodemon --exec npx ts-node src/index.ts"
+    "start": "nodemon --exec npx ts-node src/index.ts",
+    "startProd": "npx ts-node src/index.ts"
   },
   "devDependencies": {
     "@types/node-telegram-bot-api": "^0.61.6"
