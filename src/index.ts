@@ -15,9 +15,11 @@ if(!process.env.RENDER) {
     });
 } else {
     bot.setWebHook(`${process.env.RENDER_EXTERNAL_URL}/bot${process.env.TOKEN}`);
+    console.log("Bot started (prod)")
+    console.log(process.env.RENDER_EXTERNAL_URL);
 }
 
-connectToDatabase().then(res => console.log(res));
+connectToDatabase();
 
 bot.setMyCommands([
     {command: '/start', description: 'Start the bot'},
