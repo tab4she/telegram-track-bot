@@ -3,7 +3,7 @@ import dotenv from 'dotenv';
 
 export const collections: { users?: Collection, admins?: Collection } = {}
 
-export async function connectToDatabase () {
+export async function connectToDatabase() {
     dotenv.config();
     const client = new MongoClient(process.env.DB_CONNECTION_STRING as string);
     await client.connect();

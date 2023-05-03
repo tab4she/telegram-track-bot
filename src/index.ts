@@ -2,10 +2,12 @@ import ngrok from 'ngrok';
 import dotenv from 'dotenv';
 import TelegramBot, { ParseMode } from 'node-telegram-bot-api';
 import { collections, connectToDatabase } from './database.service';
+import Notifier from './Notifier';
 
 dotenv.config();
 
 const bot = new TelegramBot(process.env.TOKEN as string, { webHook: { port: process.env.PORT as number | undefined } });
+const notifier = new Notifier(bot);
 
 if(!process.env.RENDER) {
     ngrok.connect(8080).then(url => {
@@ -42,37 +44,28 @@ bot.onText(/\/start/, async msg => {
         return;
     }
     if(!user) {
+        notifier.notifyAdmins(`@${msg.from?.username} хочет стать попрошайкой`, {
+            parse_mode: 'MarkdownV2' as ParseMode,
+            reply_markup: {
+                inline_keyboard: [[
+                    {text: 'Одобрить ✅', callback_data: JSON.stringify({ type: 'acceptWorker', username: msg.from?.username, id: msg.from?.id })},
+                    {text: 'Отклонить ❌', callback_data: JSON.stringify({ type: 'declineWorker', username: msg.from?.username, id: msg.from?.id })},
+                ]]
+            }
+        })
         bot.sendMessage(msg.chat.id, "Ваша заявка принята, ожидайте ответа");
-        const admins = collections.admins?.find() ?? [];
-        admins.forEach(admin => {
-            bot.sendMessage(admin.id, `@${msg.from?.username} мечтает стать попрошайкой`, {
-                parse_mode: 'MarkdownV2' as ParseMode,
-                reply_markup: {
-                    inline_keyboard: [
-                        [
-                            {text: 'Одобрить ✅', callback_data: JSON.stringify({ type: 'acceptWorker', username: msg.from?.username, id: msg.from?.id })},
-                            {text: 'Отклонить ❌', callback_data: JSON.stringify({ type: 'declineWorker', username: msg.from?.username, id: msg.from?.id })},
-                        ]
-                    ]
-                }
-            });
-        });
         return;
     }
 
     bot.sendMessage(msg.chat.id, "Нажмите кнопку ниже чтобы отметится", {
         parse_mode: 'MarkdownV2' as ParseMode,
         reply_markup: {
-            inline_keyboard: [
-                [
+            inline_keyboard: [[
                 {text: 'Начал работу 👍', callback_data: JSON.stringify({ type: 'startWork', id: msg.from?.id })},
-                {text: 'Закончил работу 💤', callback_data: JSON.stringify({ type: 'finishWork', id: msg.from?.id })}
-                ],
-                [
+                {text: 'Закончил работу 💤', callback_data: JSON.stringify({ type: 'finishWork', id: msg.from?.id })} ],[
                 {text: 'Выслать отчет ✏️', callback_data: JSON.stringify({ type: 'sendReport', id: msg.from?.id })},
                 {text: 'Заполнить форму 📋', callback_data: JSON.stringify({ type: 'fillForm' })},
-                ]
-            ]
+            ]]
         }
     })
 });
@@ -86,52 +79,61 @@ bot.on('callback_query', async query => {
     const data = JSON.parse(query.data);
     switch(data.type) {
         case 'startWork': {
-            const admins = collections.admins?.find() ?? [];
             const user = await collections.users?.findOne({id: data.id});
             const startTime = new Date();
             const startTimeStr = `${startTime.getHours()}:${startTime.getMinutes().toString().padStart(2, '0')}`;
-            admins.forEach(admin => {
-                bot.sendMessage(admin.id, `@${user?.username} начал работу в ${startTimeStr}`);
-                collections.users?.updateOne({id: data.id}, { $set: { workStarted: Date.now(), workedToday: true }});
-            });
+            notifier.notifyAdmins(`@${user?.username} начал работу в ${startTimeStr}`);
+            collections.users?.updateOne({id: user?.id}, { $set: { workStarted: Date.now(), workedToday: true }});
             bot.sendMessage(data.id, "Хороших сборов!");
             break;
         }
         case 'finishWork': {
-            const admins = collections.admins?.find() ?? [];
             const user = await collections.users?.findOne({id: data.id});
             if(!user?.workStarted) {
                 bot.sendMessage(user?.id, `Нельзя закончить работу не начав ее :/`);
                 break;
             }
-            admins.forEach(admin => {
-                const finishTime = new Date();
-                const workDuration = finishTime.getTime() - user?.workStarted as number;
-                const hours = Math.floor(workDuration / (1000 * 60 * 60));
-                const minutes = Math.floor((workDuration / (1000 * 60)) % 60);
-                const durationStr = `${hours} ч. ${minutes} мин.`;
-                bot.sendMessage(admin.id, `@${user?.username} закончил работу проработав ${durationStr}`);
-                collections.users?.updateOne({id: data.id}, { $set: {workStarted: null }});
-            });
+
+            const finishTime = new Date();
+            const workDuration = finishTime.getTime() - user?.workStarted as number;
+            const hours = Math.floor(workDuration / (1000 * 60 * 60));
+            const minutes = Math.floor((workDuration / (1000 * 60)) % 60);
+            const durationStr = `${hours} ч. ${minutes} мин.`;
+            notifier.notifyAdmins(`@${user?.username} закончил работу проработав ${durationStr}`)
+
+            collections.users?.updateOne({id: user?.id}, { $set: {workStarted: null }});
             bot.sendMessage(data.id, `Отлично, теперь пора в офис, и не забудь заполнить форму по ссылке: *ссылка*`, {
                 parse_mode: 'MarkdownV2' as ParseMode,
                 reply_markup: {
-                    inline_keyboard: [
-                        [{text: 'Подтвердить форму 📋', callback_data: JSON.stringify({ type: 'confirmForm', id: query.from.id })}]
-                    ]
+                    inline_keyboard: [[
+                        {text: 'Подтвердить форму 📋', callback_data: JSON.stringify({ type: 'confirmForm', id: query.from.id })}
+                    ]]
+                }
+            });
+            break;
+        }
+        case 'fillForm' : {
+            bot.sendMessage(query.from.id, `Заполните форму по ссылке: *ссылка*`, {
+                parse_mode: 'MarkdownV2' as ParseMode,
+                reply_markup: {
+                    inline_keyboard: [[
+                        {text: 'Подтвердить форму 📋', callback_data: JSON.stringify({ type: 'confirmForm', id: query.from.id })}
+                    ]]
                 }
             });
             break;
         }
         case 'acceptWorker': {
             collections.users?.updateOne({id: data.id}, {$set: {username: data.username}}, {upsert: true})
-            bot.sendMessage(query.from.id, `@${data.username} записан в попрошайки`);
+            notifier.notifyAdmins(`@${data.username} записан в попрошайки`);
             bot.sendMessage(data.id, "Поздравляем, вы приняты");
+            if(query.message)
+                bot.deleteMessage(query.from.id, query.message?.message_id);
             break;
         }
         case 'declineWorker': {
             collections.users?.deleteOne({id: data.id});
-            bot.sendMessage(query.from.id, `@${data.username} уволен`);
+            notifier.notifyAdmins(`@${data.username} уволен`)
             bot.sendMessage(data.id, "Извините, ваша заявка отклонена");
             if(query.message)
                 bot.deleteMessage(query.from.id, query.message?.message_id);
@@ -139,13 +141,12 @@ bot.on('callback_query', async query => {
         }
 
         case 'confirmForm': {
-            bot.sendMessage(data.id, "Спасибо за заполнение формы");
-            const admins = collections.admins?.find() ?? [];
             const user = await collections.users?.findOne({id: data.id});
-            admins.forEach(admin => {
-                bot.sendMessage(admin.id, `@${user?.username} только что заполнил форму`);
-                collections.users?.updateOne({id: data.id}, {$set: {formFilled: true}});
-            });
+            bot.sendMessage(data.id, "Спасибо за заполнение формы");
+            notifier.notifyAdmins(`@${user?.username} только что заполнил форму`);
+            collections.users?.updateOne({id: user?.id}, {$set: {formFilled: true}});
+            if(query.message)
+                bot.deleteMessage(query.from.id, query.message?.message_id);
             break;
         }
 
@@ -153,11 +154,8 @@ bot.on('callback_query', async query => {
             bot.sendMessage(data.id, "Вышлите отчет (фотографию)");
             bot.once('photo', async (msg) => {
                 if (msg.photo) {
-                    const admins = collections.admins?.find() ?? [];
                     const user = await collections.users?.findOne({id: data.id});
-                    admins.forEach(admin => {
-                        bot.sendPhoto(admin.id, msg.photo![0].file_id, { caption: `@${user?.username} выслал отчет` });
-                    });
+                    notifier.notifyAdmins(`@${user?.username} выслал отчет`, {}, msg.photo![0].file_id);
                     bot.sendMessage(data.id, "Отчет успешно отправлен!");
                 } else {
                     bot.sendMessage(data.id, "Вы не отправили фотографию :(");
@@ -166,21 +164,14 @@ bot.on('callback_query', async query => {
 
             setTimeout(async () => {
                 if (!photoSent) {
-                    const admins = collections.admins?.find() ?? [];
                     const user = await collections.users?.findOne({id: data.id});
-                    admins.forEach(admin => {
-                        bot.sendMessage(admin.id, `@${user?.username} не отправил свой отчет вовремя`);
-                    });
+                    notifier.notifyAdmins(`@${user?.username} не отправил свой отчет вовремя`);
                 }
             }, 10 * 60 * 1000); 
 
             let photoSent = false;
-  
-            const handlePhotoSent = () => {
-                photoSent = true;
-            };
-            
-            bot.on('message', handlePhotoSent);
+            bot.on('message', () => photoSent = true);
+
             break;
         }
     }
@@ -191,6 +182,7 @@ bot.on('webhook_error', (error) => {
     console.error('Webhook Error:', error);
 });
 
+// TODO: move this to Notifier class
 const doSomethingAt10PM = async () => {
     const currentTime = new Date();
 
