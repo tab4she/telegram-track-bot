@@ -9,8 +9,8 @@
     "typescript": "^5.0.4"
   },
   "scripts": {
-    "start": "nodemon --exec npx ts-node src/index.ts",
-    "startProd": "npx ts-node src/index.ts"
+    "startDev": "nodemon --exec npx ts-node src/index.ts",
+    "start": "npx ts-node src/index.ts"
   },
   "devDependencies": {
     "@types/node-telegram-bot-api": "^0.61.6"

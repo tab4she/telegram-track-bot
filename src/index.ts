@@ -5,15 +5,19 @@ import { collections, connectToDatabase } from './database.service';
 
 dotenv.config();
 
-ngrok.connect(8080).then(url => {
-    bot.setWebHook(`${url}/bot${process.env.TOKEN}`);
-    console.log("БОТ ЗАПУЩЕН!")
-    console.log(url);
-});
+const bot = new TelegramBot(process.env.TOKEN as string, { webHook: { port: process.env.PORT as number | undefined } });
+
+if(!process.env.RENDER) {
+    ngrok.connect(8080).then(url => {
+        bot.setWebHook(`${url}/bot${process.env.TOKEN}`);
+        console.log("Bot started (dev)")
+        console.log(url);
+    });
+} else {
+    bot.setWebHook(`${process.env.RENDER_EXTERNAL_URL}/bot${process.env.TOKEN}`);
+}
 
 connectToDatabase().then(res => console.log(res));
-
-const bot = new TelegramBot(process.env.TOKEN as string, { webHook: { port: process.env.PORT as number | undefined } });
 
 bot.setMyCommands([
     {command: '/start', description: 'Start the bot'},
