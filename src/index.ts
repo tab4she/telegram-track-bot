@@ -24,7 +24,9 @@ if(!process.env.RENDER) {
 connectToDatabase();
 
 bot.setMyCommands([
-    {command: '/start', description: 'Start the bot'},
+    {command: '/start', description: 'Запусить бота'},
+    {command: '/apply', description: 'Подать заявку'},
+    {command: '/menu', description: 'Главное меню'},
 ]);
 
 bot.onText(/\/addMeAsAdmin/, async msg => {
@@ -40,20 +42,12 @@ bot.onText(/\/start/, async msg => {
     const user = await whiteList?.findOne({id: msg.from?.id});
     const admin = await admins?.findOne({id: msg.from?.id});
     if(admin) {
-        bot.sendMessage(msg.chat.id, "Здравствуйте, админ!");
+        bot.sendMessage(msg.chat.id, "Здравствуйте админ");
         return;
     }
+
     if(!user) {
-        notifier.notifyAdmins(`@${msg.from?.username} хочет стать попрошайкой`, {
-            parse_mode: 'MarkdownV2' as ParseMode,
-            reply_markup: {
-                inline_keyboard: [[
-                    {text: 'Одобрить ✅', callback_data: JSON.stringify({ type: 'acceptWorker', username: msg.from?.username, id: msg.from?.id })},
-                    {text: 'Отклонить ❌', callback_data: JSON.stringify({ type: 'declineWorker', username: msg.from?.username, id: msg.from?.id })},
-                ]]
-            }
-        })
-        bot.sendMessage(msg.chat.id, "Ваша заявка принята, ожидайте ответа");
+        bot.sendMessage(msg.chat.id, "Здравствуйте, чтоюы подать заявку используйте комманду /apply");
         return;
     }
 
@@ -69,6 +63,83 @@ bot.onText(/\/start/, async msg => {
         }
     })
 });
+
+
+bot.onText(/\/menu/, async msg => {
+    const whiteList = collections.users;
+    const admins = collections.admins;
+    const user = await whiteList?.findOne({id: msg.from?.id});
+    const admin = await admins?.findOne({id: msg.from?.id});
+    if(admin) {
+        bot.sendMessage(msg.chat.id, "*Меню для админа*");
+        return;
+    }
+
+    if(!user) {
+        bot.sendMessage(msg.chat.id, "Вам отказано в доступе. Чтобы подать заявку используйте комманду /apply");
+        return;
+    }
+
+    bot.sendMessage(msg.chat.id, "Нажмите кнопку ниже чтобы отметится", {
+        parse_mode: 'MarkdownV2' as ParseMode,
+        reply_markup: {
+            inline_keyboard: [[
+                {text: 'Начал работу 👍', callback_data: JSON.stringify({ type: 'startWork', id: msg.from?.id })},
+                {text: 'Закончил работу 💤', callback_data: JSON.stringify({ type: 'finishWork', id: msg.from?.id })} ],[
+                {text: 'Выслать отчет ✏️', callback_data: JSON.stringify({ type: 'sendReport', id: msg.from?.id })},
+                {text: 'Заполнить форму 📋', callback_data: JSON.stringify({ type: 'fillForm' })},
+            ]]
+        }
+    })
+})
+
+bot.onText(/\/apply/, async msg => {
+    const whiteList = collections.users;
+    const admins = collections.admins;
+    const user = await whiteList?.findOne({id: msg.from?.id});
+    const admin = await admins?.findOne({id: msg.from?.id});
+    if(admin) {
+        bot.sendMessage(msg.chat.id, "Вы уже администратор");
+        return;
+    }
+    if(user) {
+        bot.sendMessage(msg.chat.id, "Вы уже приняты");
+        return;
+    }
+
+    bot.sendMessage(msg.chat.id, "Введите ваше полное имя");
+    bot.once('message', msg => {
+        const name = msg.text;
+        bot.sendMessage(msg.chat.id, "Введите ваш номер телефона");
+        bot.once('message', msg => {
+            notifier.notifyAdmins(`@${msg.from?.username} хочет стать попрошайкой`, {
+                parse_mode: 'MarkdownV2' as ParseMode,
+                reply_markup: {
+                    inline_keyboard: [[
+                        {text: 'Одобрить ✅', callback_data: JSON.stringify(
+                            { 
+                                type: 'acceptWorker', 
+                                username: msg.from?.username, 
+                                id: msg.from?.id 
+                            }
+                        )},
+                        {text: 'Отклонить ❌', callback_data: JSON.stringify(
+                            { 
+                                type: 'declineWorker',
+                                username: msg.from?.username, 
+                                id: msg.from?.id 
+                            }
+                        )},
+                    ]]
+                }
+            })
+            bot.sendMessage(msg.chat.id, "Ваша заявка принята, ожидайте ответа");
+        });
+    })
+    return;
+})
+
+
 
 bot.on('callback_query', async query => {
     if(!query.data) {
